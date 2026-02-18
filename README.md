@@ -7,8 +7,8 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/github/stars/Awakener_Bots/file-sharing-bot?style=for-the-badge&color=00BFFF">
-  <img src="https://img.shields.io/github/forks/Awakener_Bots/file-sharing-bot?style=for-the-badge&color=00BFFF">
+  <img src="https://img.shields.io/github/stars/Awakener_Bots/File-Store?style=for-the-badge&color=00BFFF">
+  <img src="https://img.shields.io/github/forks/Awakener_Bots/File-Store?style=for-the-badge&color=00BFFF">
   <img src="https://img.shields.io/badge/Python-3.8+-blue?style=for-the-badge">
   <img src="https://img.shields.io/badge/MongoDB-Database-green?style=for-the-badge">
 </p>
