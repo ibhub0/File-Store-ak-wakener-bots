@@ -397,7 +397,13 @@ async def process_batch_range(client: Client, message: Message, first_id: int, l
             result_msg = f"**✅ {sc('batch creation complete')}**\n"
             result_msg += f"**{sc('mode')}:** {sc(mode + ' batching')}\n"
             result_msg += f"**{sc('files scanned')}:** {total_files}\n"
-            result_msg += f"**{sc('batches created')}:** {batches_created}\n\n"
+            result_msg += f"**{sc('batches created')}:** {batches_created}\n"
+            
+            if client.auto_del > 0:
+                import humanize
+                result_msg += f"**⏳ {sc('auto delete')}:** {humanize.naturaldelta(client.auto_del)}\n"
+            
+            result_msg += "\n"
             
             for batch in batch_links[:10]:  # Show first 10
                 result_msg += f"**📦 {batch['name'][:40]}**\n"
