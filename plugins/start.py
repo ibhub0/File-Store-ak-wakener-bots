@@ -177,120 +177,80 @@ async def start_command(client: Client, message: Message):
                     is_premium_user = True
                     # Fall through to file sending logic...
 
-        # -------------------------- DECODE FILE --------------------------
-        try:
-            string = await decode(original_base64)
-            argument = string.split("-")
-        except Exception:
-            return
+        # -------------------------- HYBRID TOKEN / BASE64 DECODE --------------------------
+        # 🔐 NEW: Check if it's a token-format link (alphanumeric, 12-16 chars)
+        from helper.helper_func import is_token_format
         
-        ids = []
-        custom_chat_id = None
-        
-        if len(argument) == 3:
+        if is_token_format(original_base64):
+            # ---- Rate limit check ----
+            if await client.mongodb.is_token_rate_limited(user_id):
+                return await message.reply(
+                    f"<blockquote>⏳ <b>{sc('too many invalid attempts')}</b></blockquote>\n"
+                    f"<blockquote><b>{sc('please wait a minute and try again')}</b></blockquote>"
+                )
+            
+            # ---- Resolve token from MongoDB ----
+            token_doc = await client.mongodb.resolve_file_token(original_base64)
+            
+            if not token_doc:
+                # Record invalid attempt for rate limiting
+                await client.mongodb.record_invalid_token_attempt(user_id)
+                return await message.reply(
+                    f"<blockquote>❌ <b>{sc('invalid or expired link')}</b></blockquote>\n"
+                    f"<blockquote><b>{sc('please get a new link')}</b></blockquote>"
+                )
+            
+            # ---- Token resolved! Build ids from token data ----
+            channel_id = token_doc["channel_id"]
+            msg_id = token_doc["msg_id"]
+            ids = [msg_id]
+            custom_chat_id = channel_id
+            
+        else:
+            # ---- OLD Base64 path (backward compatible) ----
             try:
-                # Check for New Format: get-CHANNEL_ID-MSG_ID
-                # Heuristic: Channel IDs (without -100) are usually smaller than the HUGE encoded IDs involved in multiplication?
-                # Or better: Try to interpret as multi-db first.
-                
-                # If it's a batch file link from our new handler, it is DEFINITELY get-CH-MSG.
-                # But what about legacy "Batch Range" links (get-START-END)?
-                # START = MSG_ID * DB_ID.
-                # DB_ID is -100... (negative). But `start` code uses `abs(db)`.
-                # So START is positive huge integer.
-                
-                val1 = int(argument[1])
-                val2 = int(argument[2])
-                
-                # If val2 is small (message ID), it's likely New Format.
-                # If val2 is HUGE (encoded), it's Old Format.
-                
-                # Typical Channel ID (without -100) ~ 10-15 digits.
-                # Typical Message ID ~ 1-6 digits.
-                # Typical Encoded ID (Msg * Ch) ~ 20+ digits.
-                
-                if val2 < 1000000: # Message ID < 1 Million (Safe assumption?)
-                    # New Format
-                    channel_id = val1
-                    msg_id = val2
-                    custom_chat_id = int(f"-100{channel_id}")
-                    ids = [msg_id]
-                else:
-                    # Old Format (Range)
-                    start = int(val1 / abs(client.db))
-                    end = int(val2 / abs(client.db))
-                    ids = range(start, end + 1) if start <= end else list(range(start, end - 1, -1))
-            except:
-                pass
-            try:
-                # Format: get-CHANNEL_ID-MSG_ID
-                # New Logic for Multi-DB
-                channel_id = int(argument[1])
-                msg_id = int(argument[2])
-                
-                # Check if it's a range or single file?
-                # The format get-CH-MSG implies single file.
-                # But existing logic `start = int(int(argument[1]) / abs(client.db))` implies the arguments are ENCODED IDs.
-                
-                # Wait, if I change the generation to `get-{channel_id}-{msg_id}`, then `argument[1]` is `channel_id`.
-                
-                # Let's support BOTH old and new formats.
-                # Old Format: get-START_ID-END_ID (where START_ID = REAL_ID * DB_ID)
-                # New Format: get-CHANNEL_ID-MSG_ID
-                
-                # Heuristic: 
-                # If argument[1] is a small number (channel ID 100xxxx), it might be a channel ID.
-                # If argument[1] is a HUGE number, it's an encoded ID.
-                
-                # Actually, `batch_handler` generates `get-{channel_id}-{msg_id}` now.
-                # So `argument` has 3 parts: ["get", "CHANNEL_ID", "MSG_ID"]
-                
-                arg1 = int(argument[1])
-                arg2 = int(argument[2])
-                
-                # If it's the old Range format (get-START-END), the numbers are likely HUGE.
-                # If it's the new Multi-DB format, arg1 is Channel ID, arg2 is Message ID.
-                
-                # Let's assume new format if arg1 < 100000000000000 (just a guess, or check logic)
-                
-                # BETTER APPROACH:
-                # The new `batch_handler` uses `get-{channel_id}-{msg_id}`.
-                # `channel_id` is clean (no -100).
-                
-                # Let's try to fetch assuming it's new format.
-                full_chat_id = int(f"-100{arg1}")
-                message_id = arg2
-                
-                # But wait, `get_messages` takes a LIST of IDs.
-                # And `ids` variable is expected to be a list of Message IDs.
-                # But existing code does: `messages = await get_messages(client, ids)`
-                # And `get_messages` uses `client.db` (Default DB).
-                
-                # WE NEED TO PASS `chat_id` to `get_messages`.
-                # But `get_messages` signature in `start.py` call doesn't support it yet (I just updated helper, but start.py calls it).
-                
-                # We need to change how `ids` is structured OR how `get_messages` is called.
-                
-                # If we have a single file from a specific channel:
-                ids = [message_id] # This is just the ID.
-                # But `get_messages` will use `client.db` by default!
-                
-                # We need to store the `chat_id` somewhere to use it later.
-                # Or call `get_messages` directly here with the explicit chat_id.
-                
-                custom_chat_id = full_chat_id
-                
-            except:
-                pass
-
-        elif len(argument) == 2:
-            try:
-                # Format: get-GENERATED_ID
-                # Old logic: int(argument[1]) / abs(client.db_channel.id)
-                # This only works for Default DB.
-                ids = [int(int(argument[1]) / abs(client.db))]
-            except:
+                string = await decode(original_base64)
+                argument = string.split("-")
+            except Exception:
                 return
+        
+            ids = []
+            custom_chat_id = None
+        
+            if len(argument) == 3:
+                try:
+                    val1 = int(argument[1])
+                    val2 = int(argument[2])
+                    
+                    if val2 < 1000000: # Message ID < 1 Million → New Format
+                        channel_id = val1
+                        msg_id = val2
+                        custom_chat_id = int(f"-100{channel_id}")
+                        ids = [msg_id]
+                    else:
+                        # Old Format (Range)
+                        start = int(val1 / abs(client.db))
+                        end = int(val2 / abs(client.db))
+                        ids = range(start, end + 1) if start <= end else list(range(start, end - 1, -1))
+                except:
+                    pass
+                try:
+                    arg1 = int(argument[1])
+                    arg2 = int(argument[2])
+                    full_chat_id = int(f"-100{arg1}")
+                    message_id = arg2
+                    ids = [message_id]
+                    custom_chat_id = full_chat_id
+                except:
+                    pass
+
+            elif len(argument) == 2:
+                try:
+                    # Format: get-GENERATED_ID (old single-file format)
+                    ids = [int(int(argument[1]) / abs(client.db))]
+                except:
+                    return
+
         
         # Check if credit system is enabled globally
         credit_system_enabled = await client.mongodb.is_credit_system_enabled()
