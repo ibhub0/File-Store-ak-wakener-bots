@@ -67,11 +67,40 @@ async def batch(client: Client, message: Message):
             continue
 
 
-    string = f"get-{f_msg_id * abs(client.db_channel.id)}-{s_msg_id * abs(client.db_channel.id)}"
-    base64_string = await encode(string)
-    link = f"https://t.me/{client.username}?start={base64_string}"
+    # Calculate IDs
+    # batch command generates a RANGE. Hybrid token system is for SINGLE files.
+    # We stick to base64 for ranges for now, but we add INFO to the message.
+    
+    # Fetch first message to get a name
+    try:
+        first_msg = await client.get_messages(client.db_channel.id, f_msg_id)
+        batch_name = ""
+        if first_msg:
+             if first_msg.document:
+                 batch_name = first_msg.document.file_name
+             elif first_msg.caption:
+                 batch_name = first_msg.caption.split("\n")[0][:50] + "..."
+        
+        info_text = f"📦 <b>{sc('batch create')}</b>\n"
+        if batch_name:
+             info_text += f"📄 <b>{batch_name}</b>\n"
+        info_text += f"🔢 <b>{sc('range')}:</b> {f_msg_id} - {s_msg_id}\n\n"
+        
+    except:
+        info_text = ""
+
+    # Hybrid Token for Batch Range
+    try:
+        token = await client.mongodb.create_file_token(client.db_channel.id, f_msg_id, end_msg_id=s_msg_id)
+        link = f"https://t.me/{client.username}?start={token}"
+    except Exception as e:
+        print(f"Token creation failed for batch: {e}")
+        string = f"get-{f_msg_id * abs(client.db_channel.id)}-{s_msg_id * abs(client.db_channel.id)}"
+        base64_string = await encode(string)
+        link = f"https://t.me/{client.username}?start={base64_string}"
+        
     reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton(f"🔁 {sc('share url')}", url=f'https://telegram.me/share/url?url={link}')]])
-    await second_response.reply_text(f"<b>{sc('here is your link')}</b>\n\n{link}", quote=True, reply_markup=reply_markup)
+    await second_response.reply_text(f"{info_text}<b>{sc('here is your link')}</b>\n\n{link}", quote=True, reply_markup=reply_markup)
 
 
 @Client.on_message(filters.private & filters.command('genlink'))
@@ -107,10 +136,35 @@ async def link_generator(client: Client, message: Message):
             continue
 
     channel_id = getattr(client, 'db_channel_id', client.db)
-    base64_string = await encode(f"get-{msg_id * abs(channel_id)}")
-    link = f"https://t.me/{client.username}?start={base64_string}"
+    
+    # NEW: Fetch content name
+    file_name = ""
+    try:
+        f_msg = await client.get_messages(channel_id, msg_id)
+        if f_msg:
+             if f_msg.document:
+                 file_name = f_msg.document.file_name
+             elif f_msg.caption:
+                 file_name = f_msg.caption.split("\n")[0][:50]
+    except:
+        pass
+        
+    # Hybrid Token
+    try:
+        token = await client.mongodb.create_file_token(channel_id, msg_id)
+        link = f"https://t.me/{client.username}?start={token}"
+    except:
+        base64_string = await encode(f"get-{msg_id * abs(channel_id)}")
+        link = f"https://t.me/{client.username}?start={base64_string}"
+        
     reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton(f"🔁 {sc('share url')}", url=f'https://telegram.me/share/url?url={link}')]])
-    await channel_message.reply_text(f"<b>{sc('here is your link')}</b>\n\n{link}", quote=True, reply_markup=reply_markup)
+    
+    text = ""
+    if file_name:
+        text += f"🎬 <b>{file_name}</b>\n\n"
+    text += f"<b>{sc('here is your link')}</b>\n\n{link}"
+    
+    await channel_message.reply_text(text, quote=True, reply_markup=reply_markup)
 
 @Client.on_message(filters.private & (filters.document | filters.video | filters.audio) & ~filters.command(["start", "batch", "genlink"]))
 async def single_file_gen_handler(client: Client, message: Message):
@@ -127,6 +181,9 @@ async def single_file_gen_handler(client: Client, message: Message):
         main_channel = getattr(client, 'db_channel_id', client.db)
         
         # If message is forwarded from DB Channel, use existing ID
+        channel_id = main_channel
+        msg_id = None
+        
         if message.forward_origin and message.forward_origin.type == "channel":
             forwarded_channel_id = message.forward_origin.chat.id
             # Check if it's from any of our DB channels
@@ -137,28 +194,38 @@ async def single_file_gen_handler(client: Client, message: Message):
                 msg_id = message.forward_origin.message_id
                 channel_id = forwarded_channel_id
             else:
-                # Not from our DB, copy to selected channel
-                channel_id = await client.mongodb.get_next_db_channel(main_channel)
-                post = await message.copy(chat_id=channel_id, caption=message.caption)
-                msg_id = post.id
-        else:
-            # Copy to selected DB Channel using round-robin
-            channel_id = await client.mongodb.get_next_db_channel(main_channel)
-            post = await message.copy(chat_id=channel_id, caption=message.caption)
-            msg_id = post.id
+                 # Copy
+                 pass
+        
+        if not msg_id:
+             # Not from our DB or clean upload, copy to selected channel
+             channel_id = await client.mongodb.get_next_db_channel(main_channel)
+             post = await message.copy(chat_id=channel_id, caption=message.caption)
+             msg_id = post.id
+             
+        # Extract filename for display
+        file_name = message.document.file_name if message.document else ""
+        if not file_name and message.caption:
+             file_name = message.caption.split("\n")[0][:50]
             
         # 🔐 Generate hybrid token (stored in MongoDB)
         try:
             token = await client.mongodb.create_file_token(channel_id, msg_id)
             link = f"https://t.me/{client.username}?start={token}"
-        except Exception:
+        except Exception as e:
+            print(f"Token creation failed: {e}")
             # Fallback to Base64
             base64_string = await encode(f"get-{msg_id * abs(channel_id)}")
             link = f"https://t.me/{client.username}?start={base64_string}"
         
         reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton(f"🔁 {sc('share url')}", url=f'https://telegram.me/share/url?url={link}')]])
         
-        await msg.edit_text(f"<b>{sc('here is your link')}</b>\n\n{link}", reply_markup=reply_markup)
+        text = ""
+        if file_name:
+             text += f"🎬 <b>{file_name}</b>\n\n"
+        text += f"<b>{sc('here is your link')}</b>\n\n{link}"
+        
+        await msg.edit_text(text, reply_markup=reply_markup)
         
     except Exception as e:
         print(f"Error in single_file_gen: {e}")
