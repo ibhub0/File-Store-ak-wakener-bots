@@ -62,8 +62,8 @@ A powerful Telegram bot for file sharing with advanced features including batch 
 ### 1️⃣ Clone the Repository
 
 ```bash
-git clone https://github.com/Awakener_Bots/file-sharing-bot
-cd file-sharing-bot
+git clone https://github.com/Awakener_Bots/File-Store
+cd File-Store
 ```
 
 ### 2️⃣ Install Dependencies
@@ -74,7 +74,7 @@ pip install -r requirements.txt
 
 ### 3️⃣ Configuration
 
-Create a `config.py` file:
+Fill a `config.py` file:
 
 ```python
 API_ID = 12345678
@@ -97,7 +97,7 @@ WEBHOOK = False
 ### 4️⃣ Run the Bot
 
 ```bash
-python bot.py
+python main.py
 ```
 
 ---
