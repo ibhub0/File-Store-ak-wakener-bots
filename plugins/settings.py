@@ -452,7 +452,7 @@ async def url_shorteners(client, query):
     await query.message.edit_text(msg, reply_markup=reply_markup)
     return
 
-@Client.on_callback_query(filters.regex("^photos$"))
+@Client.on_callback_query(filters.regex("^auto_del$"))
 async def auto_del(client, query):
     msg = f"""<blockquote>**Change Auto Delete Time:**</blockquote>
 **Current Timer:** `{client.auto_del}`
@@ -468,6 +468,8 @@ __Enter new integer value of auto delete timer, keep 0 to disable auto delete an
             timer = int(timer)
             if timer >= 0:
                 client.auto_del = timer
+                # 💾 Save to MongoDB
+                await client.mongodb.set_bot_config('auto_del', timer)
                 return await query.message.edit_text(f'**Auto Delete timer vakue changed to {timer} seconds!**', reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('◂ ʙᴀᴄᴋ', 'settings')]]))
             else:
                 return await query.message.edit_text("**There is no change done in auto delete timer!**", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('◂ ʙᴀᴄᴋ', 'settings')]]))
