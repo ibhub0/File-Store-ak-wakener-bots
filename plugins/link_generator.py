@@ -81,10 +81,10 @@ async def batch(client: Client, message: Message):
              elif first_msg.caption:
                  batch_name = first_msg.caption.split("\n")[0][:50] + "..."
         
-        info_text = f"📦 <b>{sc('batch create')}</b>\n"
+        info_text = f"<blockquote><b>📦 {sc('batch create')}</b>\n"
         if batch_name:
-             info_text += f"📄 <b>{batch_name}</b>\n"
-        info_text += f"🔢 <b>{sc('range')}:</b> {f_msg_id} - {s_msg_id}\n\n"
+             info_text += f"📄 {batch_name}\n"
+        info_text += f"🔢 {sc('range')}: {f_msg_id} - {s_msg_id}</blockquote>\n\n"
         
     except:
         info_text = ""
@@ -100,7 +100,7 @@ async def batch(client: Client, message: Message):
         link = f"https://t.me/{client.username}?start={base64_string}"
         
     reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton(f"🔁 {sc('share url')}", url=f'https://telegram.me/share/url?url={link}')]])
-    await second_response.reply_text(f"{info_text}<b>{sc('here is your link')}</b>\n\n{link}", quote=True, reply_markup=reply_markup)
+    await second_response.reply_text(f"{info_text}<b>{sc('here is your link')}</b>\n\n<code>{link}</code>", quote=True, reply_markup=reply_markup)
 
 
 @Client.on_message(filters.private & filters.command('genlink'))
@@ -161,8 +161,8 @@ async def link_generator(client: Client, message: Message):
     
     text = ""
     if file_name:
-        text += f"🎬 <b>{file_name}</b>\n\n"
-    text += f"<b>{sc('here is your link')}</b>\n\n{link}"
+        text += f"<blockquote><b>📂 {file_name}</b></blockquote>\n\n"
+    text += f"<b>{sc('here is your link')}</b>\n\n<code>{link}</code>"
     
     await channel_message.reply_text(text, quote=True, reply_markup=reply_markup)
 
@@ -222,8 +222,8 @@ async def single_file_gen_handler(client: Client, message: Message):
         
         text = ""
         if file_name:
-             text += f"🎬 <b>{file_name}</b>\n\n"
-        text += f"<b>{sc('here is your link')}</b>\n\n{link}"
+             text += f"<blockquote><b>📂 {file_name}</b></blockquote>\n\n"
+        text += f"<b>{sc('here is your link')}</b>\n\n<code>{link}</code>"
         
         await msg.edit_text(text, reply_markup=reply_markup)
         
